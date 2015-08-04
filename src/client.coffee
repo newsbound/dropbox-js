@@ -622,6 +622,13 @@ class Dropbox.Client
   #   allow HTTP caching to work; by default, requests are set up to avoid
   #   CORS preflights; setting this option can make sense when making the same
   #   request repeatedly
+  # @option options {Boolean} includeMediaInfo only meaningful when stat-ing
+  #   file and folders with photos and videos; if true and the metadata is
+  #   available, a photo_info and/or video_info dictionary will be included.
+  # @option options {Boolean} includeMembership only meaningful when stat-ing
+  #   a shared folder or its files; if true for folders, it will include a list
+  #   of members of the shared folder; if true for files, it will include the id
+  #   of the parent shared folder and the last modifier
   # @param {function(Dropbox.ApiError, Dropbox.File.Stat,
   #   Array<Dropbox.File.Stat>)} callback called with the result of the
   #   /metadata HTTP request; if the call succeeds, the second parameter is a
@@ -656,6 +663,10 @@ class Dropbox.Client
         params.hash = options.cacheHash
       if options.httpCache
         httpCache = true
+      if options.includeMediaInfo
+        params.include_media_info = 'true'
+      if options.includeMembership
+        params.include_membership = 'true'
     params.include_deleted ||= 'false'
     params.list ||= 'false'
     # TODO: locale support would edit the params here
@@ -1065,16 +1076,33 @@ class Dropbox.Client
   #   obtained from a previous call to {Dropbox.Client#pullChanges}, the return
   #   value of {Dropbox.Http.PulledChanges#cursor}, or null / omitted on the
   #   first call to {Dropbox.Client#pullChanges}
+  # @param {Object} options (optional) one or more of the options below
+  # @option options {String} pathPrefix if present, this parameter filters the
+  #   response to only include entires at or under the specified path
+  # @option options {Boolean} includeMediaInfo only meaningful when stat-ing
+  #   file and folders with photos and videos; if true and the metadata is
+  #   available, a photo_info and/or video_info dictionary will be included.
   # @param {function(Dropbox.ApiError, Dropbox.Http.PulledChanges)} callback
   #   called with the result of the /delta HTTP request; if the call
   #   succeeds, the second parameter is a {Dropbox.Http.PulledChanges}
   #   describing the changes to the user's Dropbox since the pullChanges call
   #   that produced the given cursor, and the first parameter is null
   # @return {XMLHttpRequest} the XHR object used for this API call
-  pullChanges: (cursor, callback) ->
-    if (not callback) and (typeof cursor is 'function')
+  pullChanges: (cursor, options, callback) ->
+    # if cursor and options were not passed
+    if (not options) and (not callback) and (typeof cursor is 'function')
       callback = cursor
       cursor = null
+      options = null
+    # if options were not passed but cursor was passed
+    else if (not callback) and (typeof options is 'function')
+      callback = options
+      options = null
+    # if cursor was not passed but options were passed
+    else if (not callback) and (typeof options is 'function') and (not cursor.cursorTag) and (typeof cursor is 'object')
+      callback = options
+      cursor = null
+      options = cursor
 
     if cursor
       if cursor.cursorTag  # cursor is a Dropbox.Http.PulledChanges instance
@@ -1084,16 +1112,26 @@ class Dropbox.Client
     else
       params = {}
 
+    if options
+      if options.pathPrefix
+        params.path_prefix = options.pathPrefix
+      if options.includeMediaInfo
+        params.include_media_info = 'true'
+    else
+      if cursor.options
+        params.path_prefix = cursor.options.path_prefix
+        params.include_media_info = 'true'
+
     xhr = new Dropbox.Util.Xhr 'POST', @_urls.delta
     xhr.setParams(params).signWithOauth @_oauth
     @_dispatchXhr xhr, (error, deltaInfo) ->
-      callback error, Dropbox.Http.PulledChanges.parse(deltaInfo)
+      callback(error, Dropbox.Http.PulledChanges.parse(deltaInfo))
 
   # Alias for "pullChanges" that matches the HTTP API.
   #
   # @see Dropbox.Client#pullChanges
-  delta: (cursor, callback) ->
-    @pullChanges cursor, callback
+  delta: (cursor, options, callback) ->
+    @pullChanges cursor, options, callback
 
   # Checks whether changes have occurred in a user's Dropbox.
   #

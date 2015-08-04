@@ -5,13 +5,14 @@ class Dropbox.Http.PulledChanges
   # Creates a PulledChanges instance from a /delta API call result.
   #
   # @param {Object} deltaInfo the parsed JSON of a /delta API call result
+  # @param {Object} options possible flags passed to the /delta endpoint
   # @return {Dropbox.Http.PulledChanges} a PulledChanges instance wrapping the
   #   given Dropbox changes
-  @parse: (deltaInfo) ->
+  @parse: (deltaInfo, options) ->
     # NOTE: if the argument is not an object, it is returned; this makes the
     #       client code more compact
     if deltaInfo and typeof deltaInfo is 'object'
-      new Dropbox.Http.PulledChanges deltaInfo
+      new Dropbox.Http.PulledChanges(deltaInfo, options)
     else
       deltaInfo
 
@@ -25,6 +26,15 @@ class Dropbox.Http.PulledChanges
   #   returned by pullChanges, and meant to be used by a subsequent pullChanges
   #   call
   cursorTag: undefined
+
+  # @param {Object} options (optional) if cursorTag is present, options that were
+  #   passed as part of the original call
+  # @option options {String} pathPrefix if present, this parameter filters the
+  #   response to only include entires at or under the specified path
+  # @option options {Boolean} includeMediaInfo only meaningful when stat-ing
+  #   file and folders with photos and videos; if true and the metadata is
+  #   available, a photo_info and/or video_info dictionary will be included.
+  options: undefined
 
   # @property {Array<Dropbox.Http.PulledChange> an array with one entry for
   #   each change to the user's Dropbox returned by a pullChanges call
@@ -53,9 +63,10 @@ class Dropbox.Http.PulledChanges
   # not be called directly.
   #
   # @param {Object} deltaInfo the parsed JSON of a /delta API call result
-  constructor: (deltaInfo) ->
+  constructor: (deltaInfo, options) ->
     @blankSlate = deltaInfo.reset or false
     @cursorTag = deltaInfo.cursor
+    @options = options
     @shouldPullAgain = deltaInfo.has_more
     @shouldBackOff = not @shouldPullAgain
     if deltaInfo.cursor and deltaInfo.cursor.length
